@@ -15,3 +15,9 @@ build/
 **/android/local.properties
 **/android/captures/
 **/android/key.properties
+
+# Local build-time config (public keys only, but keep per-developer)
+env/*.json
+!env/*.json.example
+/flutter/
+.vercel

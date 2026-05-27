@@ -1,23 +1,12 @@
-/// Pure pricing rules shared by cart, checkout, and order persistence.
+/// Display-side pricing; mirrors `place_demo_order` in SQL, which is authoritative.
 abstract final class CheckoutPricing {
-  static const double shippingFlat = 50;
+  static const int shippingFlatCents = 5000;
   static const double taxRate = 0.08;
 
-  static double subtotal(List<(double unitPrice, int qty)> lines) {
-    var sum = 0.0;
-    for (final (p, q) in lines) {
-      sum += p * q;
-    }
-    return sum;
-  }
+  static int shippingCents(int subtotalCents) => subtotalCents > 0 ? shippingFlatCents : 0;
 
-  static double shippingForSubtotal(double subtotal) =>
-      subtotal > 0 ? shippingFlat : 0;
+  static int taxCents(int subtotalCents) => (subtotalCents * taxRate).round();
 
-  static double tax(double subtotal) => subtotal * taxRate;
-
-  static double grandTotal(double subtotal) {
-    final ship = shippingForSubtotal(subtotal);
-    return subtotal + ship + tax(subtotal);
-  }
+  static int grandTotalCents(int subtotalCents) =>
+      subtotalCents + shippingCents(subtotalCents) + taxCents(subtotalCents);
 }

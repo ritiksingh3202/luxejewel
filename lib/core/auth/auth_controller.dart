@@ -1,42 +1,75 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
+import '../../data/repositories/repositories.dart';
 import 'auth_session.dart';
 
-/// Local auth today; swap implementation for Supabase/Firebase when deploying.
+/// Auth state for routing and UI; backed by Supabase Auth (session persisted by the SDK).
 class AuthController extends ChangeNotifier {
+  AuthController(this._repo) {
+    _session = _repo.currentSession;
+    _sub = _repo.events.listen(_onEvent);
+  }
+
+  final AuthRepository _repo;
+  late final StreamSubscription<AuthEvent> _sub;
   AuthSession? _session;
+  bool _passwordRecovery = false;
 
   AuthSession? get session => _session;
   bool get isSignedIn => _session != null;
 
-  Future<void> signIn({required String email, required String password}) async {
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    _session = AuthSession(
-      userId: 'local-${email.hashCode}',
-      email: email.trim(),
-      displayName: email.split('@').first,
-    );
+  /// True after the user opened a password-reset link; router forces /reset-password.
+  bool get passwordRecovery => _passwordRecovery;
+
+  void _onEvent(AuthEvent e) {
+    _session = e.session;
+    if (e.passwordRecovery) _passwordRecovery = true;
     notifyListeners();
   }
 
-  Future<void> signUp({
+  void _syncSession() {
+    _session = _repo.currentSession;
+    notifyListeners();
+  }
+
+  Future<void> signIn({required String email, required String password}) async {
+    await _repo.signIn(email: email, password: password);
+    _syncSession();
+  }
+
+  /// Returns `true` when email verification is required before signing in.
+  Future<bool> signUp({
     required String name,
     required String email,
     required String password,
     String? phone,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    _session = AuthSession(
-      userId: 'local-${email.hashCode}',
-      email: email.trim(),
-      displayName: name.trim(),
-      phone: phone?.trim(),
-    );
+    final needsVerification = await _repo.signUp(name: name, email: email, password: password, phone: phone);
+    _syncSession();
+    return needsVerification;
+  }
+
+  Future<void> signOut() async {
+    await _repo.signOut();
+    _passwordRecovery = false;
+    _syncSession();
+  }
+
+  Future<void> sendPasswordReset(String email) => _repo.sendPasswordReset(email);
+
+  Future<void> updatePassword(String password) async {
+    await _repo.updatePassword(password);
+    _passwordRecovery = false;
     notifyListeners();
   }
 
-  void signOut() {
-    _session = null;
-    notifyListeners();
+  Future<void> signInWithProvider(SocialProvider provider) => _repo.signInWithProvider(provider);
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
   }
 }

@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 
 import '../../core/auth/auth_controller.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/validation/validators.dart';
+import '../../shared/feedback.dart';
 import '../../shared/widgets/luxe_button.dart';
 import '../../shared/widgets/luxe_logo.dart';
 import '../../shared/widgets/luxe_text_field.dart';
+import 'social_auth_buttons.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -62,7 +65,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       label: 'Full Name',
                       hint: 'John Doe',
                       textInputAction: TextInputAction.next,
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      validator: Validators.name,
                     ),
                     const SizedBox(height: 18),
                     LuxeTextField(
@@ -70,7 +73,8 @@ class _SignupScreenState extends State<SignupScreen> {
                       label: 'Email Address',
                       hint: 'your@email.com',
                       keyboardType: TextInputType.emailAddress,
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      autofillHints: const [AutofillHints.email],
+                      validator: Validators.email,
                     ),
                     const SizedBox(height: 18),
                     LuxeTextField(
@@ -78,7 +82,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       label: 'Phone Number',
                       hint: '+1 (555) 000-0000',
                       keyboardType: TextInputType.phone,
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      validator: Validators.phone,
                     ),
                     const SizedBox(height: 18),
                     LuxeTextField(
@@ -86,7 +90,8 @@ class _SignupScreenState extends State<SignupScreen> {
                       label: 'Password',
                       hint: 'Create a strong password',
                       obscure: _obscure,
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      autofillHints: const [AutofillHints.newPassword],
+                      validator: Validators.newPassword,
                       suffix: IconButton(
                         onPressed: () => setState(() => _obscure = !_obscure),
                         icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
@@ -148,48 +153,39 @@ class _SignupScreenState extends State<SignupScreen> {
                                 return;
                               }
                               setState(() => _loading = true);
-                              await context.read<AuthController>().signUp(
-                                    name: _name.text,
-                                    email: _email.text,
-                                    password: _password.text,
-                                    phone: _phone.text,
-                                  );
-                              if (!mounted) return;
+                              var needsVerification = false;
+                              final ok = await runWithFeedback(context, () async {
+                                needsVerification = await context.read<AuthController>().signUp(
+                                      name: _name.text,
+                                      email: _email.text,
+                                      password: _password.text,
+                                      phone: _phone.text,
+                                    );
+                              });
+                              if (!context.mounted) return;
                               setState(() => _loading = false);
-                              context.go('/home');
+                              if (ok && needsVerification) {
+                                await showDialog<void>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Verify your email'),
+                                    content: Text(
+                                      'We sent a confirmation link to ${_email.text.trim()}. '
+                                      'Open it, then sign in.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('OK'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (context.mounted) context.go('/login');
+                              }
                             },
                     ),
-                    const SizedBox(height: 28),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider(color: AppColors.divider)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('Or sign up with', style: Theme.of(context).textTheme.bodySmall),
-                        ),
-                        const Expanded(child: Divider(color: AppColors.divider)),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
-                            label: const Text('Google'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(Icons.apple_rounded, size: 22),
-                            label: const Text('Apple'),
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SocialAuthButtons(caption: 'Or sign up with'),
                     const SizedBox(height: 24),
                     Text.rich(
                       TextSpan(

@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 
 import '../../core/auth/auth_controller.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/validation/validators.dart';
+import '../../shared/feedback.dart';
 import '../../shared/widgets/luxe_button.dart';
 import '../../shared/widgets/luxe_logo.dart';
 import '../../shared/widgets/luxe_text_field.dart';
+import 'social_auth_buttons.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -58,7 +61,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       hint: 'your@email.com',
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      textInputAction: TextInputAction.next,
+                      validator: Validators.email,
                     ),
                     const SizedBox(height: 18),
                     LuxeTextField(
@@ -67,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       hint: 'Enter your password',
                       obscure: _obscure,
                       autofillHints: const [AutofillHints.password],
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      validator: Validators.loginPassword,
                       suffix: IconButton(
                         onPressed: () => setState(() => _obscure = !_obscure),
                         icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
@@ -77,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () {},
+                        onPressed: () => context.push('/forgot-password'),
                         child: const Text('Forgot Password?'),
                       ),
                     ),
@@ -90,46 +94,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           : () async {
                               if (!(_formKey.currentState?.validate() ?? false)) return;
                               setState(() => _loading = true);
-                              await context.read<AuthController>().signIn(
-                                    email: _email.text,
-                                    password: _password.text,
-                                  );
+                              // Router redirects to the original destination once signed in.
+                              await runWithFeedback(
+                                context,
+                                () => context.read<AuthController>().signIn(
+                                      email: _email.text,
+                                      password: _password.text,
+                                    ),
+                              );
                               if (!mounted) return;
                               setState(() => _loading = false);
-                              context.go('/home');
                             },
                     ),
-                    const SizedBox(height: 28),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider(color: AppColors.divider)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('Or continue with', style: Theme.of(context).textTheme.bodySmall),
-                        ),
-                        const Expanded(child: Divider(color: AppColors.divider)),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
-                            label: const Text('Google'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(Icons.apple_rounded, size: 22),
-                            label: const Text('Apple'),
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SocialAuthButtons(caption: 'Or continue with'),
                     const SizedBox(height: 24),
                     Text.rich(
                       TextSpan(
@@ -140,7 +117,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             alignment: PlaceholderAlignment.baseline,
                             baseline: TextBaseline.alphabetic,
                             child: GestureDetector(
-                              onTap: () => context.go('/signup'),
+                              onTap: () => context.go(Uri(
+                                path: '/signup',
+                                queryParameters: GoRouterState.of(context).uri.queryParameters.isEmpty
+                                    ? null
+                                    : GoRouterState.of(context).uri.queryParameters,
+                              ).toString()),
                               child: Text(
                                 'Sign Up',
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(

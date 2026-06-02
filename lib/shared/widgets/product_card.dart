@@ -7,6 +7,7 @@ import '../../application/app_state.dart';
 import '../../core/formatting/money.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/models/product.dart';
+import '../feedback.dart';
 import 'luxe_image.dart';
 
 class ProductCard extends StatelessWidget {
@@ -26,8 +27,7 @@ class ProductCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AspectRatio(
-            aspectRatio: 1,
+          Expanded(
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -45,7 +45,7 @@ class ProductCard extends StatelessWidget {
                       customBorder: const CircleBorder(),
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        context.read<AppState>().toggleWishlist(product);
+                        runWithFeedback(context, () => context.read<AppState>().toggleWishlist(product));
                       },
                       child: Padding(
                         padding: const EdgeInsets.all(8),
@@ -93,28 +93,40 @@ class ProductCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
                         usd.format(product.price),
+                        maxLines: 1,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               color: AppColors.gold,
                               fontWeight: FontWeight.w700,
                             ),
                       ),
+                      ),
                     ),
+                    const SizedBox(width: 6),
                     FilledButton(
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        context.read<AppState>().addToCart(product);
-                      },
+                      onPressed: !product.inStock
+                          ? null
+                          : () {
+                              HapticFeedback.lightImpact();
+                              runWithFeedback(
+                                context,
+                                () => context.read<AppState>().addToCart(product),
+                                success: 'Added to cart',
+                              );
+                            },
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
                       ),
-                      child: const FittedBox(
+                      child: FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text('Add to Cart'),
+                        child: Text(product.inStock ? 'Add to Cart' : 'Sold Out'),
                       ),
                     ),
                   ],

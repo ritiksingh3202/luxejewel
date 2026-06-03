@@ -6,8 +6,10 @@ import 'package:provider/provider.dart';
 
 import '../../application/app_state.dart';
 import '../../core/theme/app_colors.dart';
-import '../../domain/models/product.dart';
+import '../../router/nav.dart';
+import '../../shared/feedback.dart';
 import '../../shared/widgets/luxe_button.dart';
+import '../../shared/widgets/luxe_empty_state.dart';
 import '../../shared/widgets/luxe_image.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -25,17 +27,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final product = app.catalog.byId(widget.productId);
+    final product = app.productById(widget.productId);
     if (product == null) {
+      final back = IconButton(
+        onPressed: () => context.popOrGo('/products'),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+      );
       return Scaffold(
         backgroundColor: AppColors.bgPrimary,
-        appBar: AppBar(),
-        body: const Center(child: Text('Product not found')),
+        appBar: AppBar(leading: back),
+        body: app.catalogLoading || (!app.catalogLoaded && app.catalogError == null)
+            ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+            : LuxeEmptyState(
+                icon: Icons.search_off_rounded,
+                title: app.catalogError != null ? 'Could not load product' : 'Product not found',
+                message: app.catalogError ?? 'This item may no longer be available.',
+                actionLabel: app.catalogError != null ? 'Retry' : 'Browse Products',
+                onAction: app.catalogError != null ? app.loadCatalog : () => context.go('/products'),
+              ),
       );
     }
 
     final inWishlist = app.isInWishlist(product.id);
     final fullStars = product.rating.floor();
+    final maxQty = product.stock.clamp(1, AppState.maxQuantityPerItem);
+    if (_qty > maxQty) _qty = maxQty;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -46,14 +62,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             backgroundColor: AppColors.bgPrimary.withOpacity(0.92),
             surfaceTintColor: Colors.transparent,
             leading: IconButton(
-              onPressed: () => context.pop(),
+              onPressed: () => context.popOrGo('/products'),
               icon: const Icon(Icons.arrow_back_ios_new_rounded),
             ),
             actions: [
               IconButton(
                 onPressed: () {
                   HapticFeedback.selectionClick();
-                  context.read<AppState>().toggleWishlist(product);
+                  runWithFeedback(context, () => context.read<AppState>().toggleWishlist(product));
                 },
                 icon: Icon(
                   inWishlist ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -63,7 +79,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ],
           ),
           SliverToBoxAdapter(
-            child: Padding(
+            child: Center(
+              child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,8 +122,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                       const SizedBox(width: 8),
                       Text(
-                        '${product.rating} (127 reviews)',
+                        '${product.rating}',
                         style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const Spacer(),
+                      Text(
+                        !product.inStock
+                            ? 'Out of stock'
+                            : product.stock <= 5
+                                ? 'Only ${product.stock} left'
+                                : 'In stock',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: product.inStock ? AppColors.gold : AppColors.destructive,
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
                     ],
                   ),
@@ -134,7 +165,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     children: [
                       _QtyButton(
                         icon: Icons.remove,
-                        onTap: () => setState(() => _qty = (_qty - 1).clamp(1, 999)),
+                        onTap: () => setState(() => _qty = (_qty - 1).clamp(1, maxQty)),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -142,7 +173,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ),
                       _QtyButton(
                         icon: Icons.add,
-                        onTap: () => setState(() => _qty = (_qty + 1).clamp(1, 999)),
+                        onTap: () => setState(() => _qty = (_qty + 1).clamp(1, maxQty)),
                       ),
                     ],
                   ),
@@ -162,7 +193,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           child: OutlinedButton(
                             onPressed: () {
                               HapticFeedback.selectionClick();
-                              context.read<AppState>().toggleWishlist(product);
+                              runWithFeedback(context, () => context.read<AppState>().toggleWishlist(product));
                             },
                             child: Icon(
                               inWishlist ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -175,17 +206,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       Expanded(
                         flex: 2,
                         child: LuxeButton(
-                          label: 'Add to Cart',
+                          label: product.inStock ? 'Add to Cart' : 'Out of Stock',
                           icon: const Icon(Icons.shopping_cart_outlined, size: 20),
                           expanded: true,
-                          onPressed: () {
-                            HapticFeedback.mediumImpact();
-                            final state = context.read<AppState>();
-                            for (var i = 0; i < _qty; i++) {
-                              state.addToCart(product);
-                            }
-                            context.push('/cart');
-                          },
+                          onPressed: !product.inStock
+                              ? null
+                              : () async {
+                                  HapticFeedback.mediumImpact();
+                                  final ok = await runWithFeedback(
+                                    context,
+                                    () => context.read<AppState>().addToCart(product, quantity: _qty),
+                                  );
+                                  if (ok && context.mounted) context.go('/cart');
+                                },
                         ),
                       ),
                     ],
@@ -193,6 +226,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   const SizedBox(height: 32),
                 ],
               ),
+            ),
+            ),
             ),
           ),
         ],

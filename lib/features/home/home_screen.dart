@@ -4,11 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../../application/app_state.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/products_data.dart';
 import '../../domain/models/product.dart';
 import '../../core/constants/app_assets.dart';
 import '../../shared/widgets/luxe_image.dart';
-import '../../shared/widgets/product_card.dart';
+import '../../shared/widgets/product_grid.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,7 +22,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final all = context.watch<AppState>().catalog.all;
+    final app = context.watch<AppState>();
+    final all = app.products;
+    final categories = app.categories;
     var filtered =
         _category == 'All' ? List<Product>.from(all) : all.where((p) => p.category == _category).toList();
     final q = _query.trim().toLowerCase();
@@ -31,7 +32,8 @@ class _HomeScreenState extends State<HomeScreen> {
       filtered = filtered.where((p) => p.name.toLowerCase().contains(q)).toList();
     }
     final featured = filtered.take(4).toList();
-    final best = all.length > 4 ? all.sublist(4) : <Product>[];
+    final best = all.length > 4 ? ([...all]..sort((a, b) => b.rating.compareTo(a.rating))).take(4).toList() : <Product>[];
+    final showStatus = app.catalogLoading || app.catalogError != null || featured.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -59,24 +61,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       Material(
                         color: AppColors.bgSecondary,
                         shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () {},
-                          child: const Padding(
-                            padding: EdgeInsets.all(14),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Icon(Icons.notifications_none_rounded, size: 22),
-                                Positioned(
-                                  right: -1,
-                                  top: -1,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
-                                    child: const SizedBox(width: 8, height: 8),
-                                  ),
-                                ),
-                              ],
+                        child: Tooltip(
+                          message: 'Order updates',
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => context.push('/orders'),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  const Icon(Icons.notifications_none_rounded, size: 22),
+                                  if (app.orders.isNotEmpty)
+                                    const Positioned(
+                                      right: -1,
+                                      top: -1,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
+                                        child: SizedBox(width: 8, height: 8),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -86,6 +92,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 22),
                   TextField(
                     onChanged: (v) => setState(() => _query = v),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (v) => context.push('/products?q=${Uri.encodeQueryComponent(v.trim())}'),
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppColors.textPrimary),
                     decoration: InputDecoration(
                       hintText: 'Search jewelry…',
@@ -128,9 +136,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
-                            child: Column(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Column(
+                              mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text('New Collection', style: Theme.of(context).textTheme.headlineSmall),
                                 const SizedBox(height: 6),
@@ -144,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: const Text('Explore Now'),
                                 ),
                               ],
+                            ),
                             ),
                           ),
                         ],
@@ -160,10 +172,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 scrollDirection: Axis.horizontal,
-                itemCount: kCategories.length,
+                itemCount: categories.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
                 itemBuilder: (context, i) {
-                  final c = kCategories[i];
+                  final c = categories[i];
                   final active = _category == c;
                   return ChoiceChip(
                     label: Text(c),
@@ -199,40 +211,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                childAspectRatio: 0.54,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => ProductCard(product: featured[i]),
-                childCount: featured.length,
+            sliver: showStatus
+                ? CatalogStatusSliver(
+                    loading: app.catalogLoading,
+                    error: app.catalogError,
+                    onRetry: app.loadCatalog,
+                  )
+                : ProductSliverGrid(products: featured),
+          ),
+          if (best.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 10),
+                child: Text('Best Sellers', style: Theme.of(context).textTheme.titleLarge),
               ),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 10),
-              child: Text('Best Sellers', style: Theme.of(context).textTheme.titleLarge),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+              sliver: ProductSliverGrid(products: best),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                childAspectRatio: 0.54,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => ProductCard(product: best[i]),
-                childCount: best.length,
-              ),
-            ),
-          ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
     );

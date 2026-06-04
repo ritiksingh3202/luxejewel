@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../application/app_state.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/luxe_empty_state.dart';
-import '../../shared/widgets/product_card.dart';
+import '../../shared/widgets/product_grid.dart';
 
 class WishlistScreen extends StatelessWidget {
   const WishlistScreen({super.key});
@@ -40,18 +40,7 @@ class WishlistScreen extends StatelessWidget {
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.54,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => ProductCard(product: wishlist[i]),
-                  childCount: wishlist.length,
-                ),
-              ),
+              sliver: ProductSliverGrid(products: wishlist),
             ),
           ],
         ],

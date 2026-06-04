@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../application/app_state.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/pricing/checkout_pricing.dart';
+import '../../shared/feedback.dart';
 import '../../shared/widgets/luxe_button.dart';
 import '../../shared/widgets/luxe_empty_state.dart';
 import '../../shared/widgets/luxe_image.dart';
@@ -18,10 +19,10 @@ class CartScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final cart = app.cart;
-    final subtotal = app.cartTotal;
-    final ship = CheckoutPricing.shippingForSubtotal(subtotal);
-    final tax = CheckoutPricing.tax(subtotal);
-    final total = CheckoutPricing.grandTotal(subtotal);
+    final subtotal = app.cartSubtotalCents;
+    final ship = CheckoutPricing.shippingCents(subtotal);
+    final tax = CheckoutPricing.taxCents(subtotal);
+    final total = CheckoutPricing.grandTotalCents(subtotal);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -30,7 +31,17 @@ class CartScreen extends StatelessWidget {
           const _CartHeader(),
           Expanded(
             child: cart.isEmpty
-                ? _EmptyCart(onShop: () => context.go('/home'))
+                ? (app.userLoading
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+                    : app.userError != null
+                        ? LuxeEmptyState(
+                            icon: Icons.cloud_off_rounded,
+                            title: 'Could not load your cart',
+                            message: app.userError!,
+                            actionLabel: 'Retry',
+                            onAction: app.refreshUserData,
+                          )
+                        : _EmptyCart(onShop: () => context.go('/home')))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 18, 24, 200),
                     itemCount: cart.length,
@@ -75,7 +86,10 @@ class CartScreen extends StatelessWidget {
                                     children: [
                                       _IconCircle(
                                         icon: Icons.remove,
-                                        onTap: () => app.updateCartQuantity(item.id, item.quantity - 1),
+                                        onTap: () => runWithFeedback(
+                                          context,
+                                          () => app.updateCartQuantity(item.id, item.quantity - 1),
+                                        ),
                                       ),
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -83,13 +97,17 @@ class CartScreen extends StatelessWidget {
                                       ),
                                       _IconCircle(
                                         icon: Icons.add,
-                                        onTap: () => app.updateCartQuantity(item.id, item.quantity + 1),
+                                        onTap: () => runWithFeedback(
+                                          context,
+                                          () => app.updateCartQuantity(item.id, item.quantity + 1),
+                                        ),
                                       ),
                                       const Spacer(),
                                       IconButton(
+                                        tooltip: 'Remove',
                                         onPressed: () {
                                           HapticFeedback.lightImpact();
-                                          app.removeFromCart(item.id);
+                                          runWithFeedback(context, () => app.removeFromCart(item.id));
                                         },
                                         icon: const Icon(Icons.delete_outline_rounded, color: AppColors.destructive),
                                       ),
@@ -119,16 +137,16 @@ class CartScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _Line('Subtotal', usd.format(subtotal)),
-                    _Line('Shipping', usd.format(ship)),
-                    _Line('Tax (8%)', usd.format(tax)),
+                    _Line('Subtotal', formatCents(subtotal)),
+                    _Line('Shipping', formatCents(ship)),
+                    _Line('Tax (8%)', formatCents(tax)),
                     const Divider(height: 22, color: AppColors.divider),
                     Row(
                       children: [
                         Text('Total', style: Theme.of(context).textTheme.titleMedium),
                         const Spacer(),
                         Text(
-                          usd.format(total),
+                          formatCents(total),
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.gold),
                         ),
                       ],

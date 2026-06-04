@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/formatting/money.dart';
 import 'package:provider/provider.dart';
 
 import '../../application/app_state.dart';
+import '../../core/formatting/money.dart';
 import '../../core/theme/app_colors.dart';
 import '../../domain/pricing/checkout_pricing.dart';
+import '../../router/nav.dart';
+import '../../shared/feedback.dart';
 import '../../shared/widgets/luxe_button.dart';
-import '../../shared/widgets/luxe_text_field.dart';
+import '../../shared/widgets/luxe_image.dart';
+import '../profile/address_form_sheet.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -17,255 +20,192 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final _formKey = GlobalKey<FormState>();
-  String _payment = 'card';
-
-  final _name = TextEditingController();
-  final _phone = TextEditingController();
-  final _line1 = TextEditingController();
-  final _line2 = TextEditingController();
-  final _city = TextEditingController();
-  final _zip = TextEditingController();
-  final _card = TextEditingController();
-  final _exp = TextEditingController();
-  final _cvv = TextEditingController();
-  final _upi = TextEditingController();
+  String? _addressId;
+  bool _placing = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (context.read<AppState>().cart.isEmpty) {
-        context.go('/cart');
-      }
+      final app = context.read<AppState>();
+      if (app.cart.isEmpty && !app.userLoading) context.go('/cart');
     });
   }
 
-  @override
-  void dispose() {
-    _name.dispose();
-    _phone.dispose();
-    _line1.dispose();
-    _line2.dispose();
-    _city.dispose();
-    _zip.dispose();
-    _card.dispose();
-    _exp.dispose();
-    _cvv.dispose();
-    _upi.dispose();
-    super.dispose();
+  Future<void> _addAddress() async {
+    final saved = await showAddressForm(context);
+    if (saved != null && mounted) setState(() => _addressId = saved.id);
   }
 
-  void _submit(BuildContext context) {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_payment == 'card') {
-      if (_card.text.isEmpty || _exp.text.isEmpty || _cvv.text.isEmpty) return;
-    } else {
-      if (_upi.text.isEmpty) return;
-    }
-
-    final address =
-        '${_line1.text}, ${_line2.text.isNotEmpty ? '${_line2.text}, ' : ''}${_city.text} ${_zip.text} · ${_name.text}';
-
-    context.read<AppState>().placeOrder(
-          address: address,
-          paymentMethod: _payment,
-        );
-    context.go('/order-success');
+  Future<void> _place(String addressId) async {
+    setState(() => _placing = true);
+    String? orderId;
+    await runWithFeedback(context, () async {
+      orderId = await context.read<AppState>().placeOrder(addressId: addressId);
+    });
+    if (!mounted) return;
+    setState(() => _placing = false);
+    if (orderId != null) context.go('/order-success?id=$orderId');
   }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final subtotal = app.cartTotal;
-    final ship = CheckoutPricing.shippingFlat;
-    final tax = CheckoutPricing.tax(subtotal);
-    final total = CheckoutPricing.grandTotal(subtotal);
+    final subtotal = app.cartSubtotalCents;
+    final ship = CheckoutPricing.shippingCents(subtotal);
+    final tax = CheckoutPricing.taxCents(subtotal);
+    final total = CheckoutPricing.grandTotalCents(subtotal);
+    final addresses = app.addresses;
+    final selectedId = addresses.any((a) => a.id == _addressId) ? _addressId : app.defaultAddress?.id;
+    final method = app.paymentMethod;
+    final theme = Theme.of(context).textTheme;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => context.pop(),
+          onPressed: () => context.popOrGo('/cart'),
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
         ),
         title: const Text('Checkout'),
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 10, 24, 32),
-          children: [
-            Text('Delivery Address', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 14),
-            LuxeTextField(
-              controller: _name,
-              label: 'Full Name',
-              hint: 'John Doe',
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 14),
-            LuxeTextField(
-              controller: _phone,
-              label: 'Phone Number',
-              hint: '+1 (555) 000-0000',
-              keyboardType: TextInputType.phone,
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 14),
-            LuxeTextField(
-              controller: _line1,
-              label: 'Address Line 1',
-              hint: '123 Main Street',
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 14),
-            LuxeTextField(controller: _line2, label: 'Address Line 2', hint: 'Apt 4B'),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: LuxeTextField(
-                    controller: _city,
-                    label: 'City',
-                    hint: 'New York',
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: LuxeTextField(
-                    controller: _zip,
-                    label: 'ZIP Code',
-                    hint: '10001',
-                    keyboardType: TextInputType.number,
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 26),
-            Text('Payment Method', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _PaymentTile(
-              title: 'Credit / Debit Card',
-              value: 'card',
-              groupValue: _payment,
-              leading: const Icon(Icons.credit_card_rounded, color: AppColors.gold),
-              onChanged: (v) => setState(() => _payment = v!),
-            ),
-            const SizedBox(height: 10),
-            _PaymentTile(
-              title: 'UPI',
-              value: 'upi',
-              groupValue: _payment,
-              leading: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.gold),
-              onChanged: (v) => setState(() => _payment = v!),
-            ),
-            const SizedBox(height: 14),
-            if (_payment == 'card') ...[
-              LuxeTextField(
-                controller: _card,
-                label: 'Card Number',
-                hint: '1234 5678 9012 3456',
-                keyboardType: TextInputType.number,
-                validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: LuxeTextField(
-                      controller: _exp,
-                      label: 'Expiry Date',
-                      hint: 'MM/YY',
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: LuxeTextField(
-                      controller: _cvv,
-                      label: 'CVV',
-                      hint: '123',
-                      keyboardType: TextInputType.number,
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                    ),
-                  ),
-                ],
-              ),
-            ] else ...[
-              LuxeTextField(
-                controller: _upi,
-                label: 'UPI ID',
-                hint: 'yourname@upi',
-                validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-              ),
-            ],
-            const SizedBox(height: 22),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.bgSecondary,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Order Summary', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  _SummaryRow('Subtotal', usd.format(subtotal)),
-                  _SummaryRow('Shipping', usd.format(ship)),
-                  _SummaryRow('Tax (8%)', usd.format(tax)),
-                  const Divider(height: 22, color: AppColors.divider),
-                  Row(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 10, 24, 32),
+            children: [
+              Text('Your Items', style: theme.titleMedium),
+              const SizedBox(height: 12),
+              for (final item in app.cart)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
                     children: [
-                      Text('Total', style: Theme.of(context).textTheme.titleMedium),
-                      const Spacer(),
-                      Text(
-                        usd.format(total),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.gold),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: SizedBox(
+                          width: 52,
+                          height: 52,
+                          child: LuxeImage(source: item.image, semanticLabel: item.name),
+                        ),
                       ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text('${item.name} × ${item.quantity}',
+                            maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.bodyMedium),
+                      ),
+                      Text(formatCents(item.product.priceCents * item.quantity), style: theme.bodySmall),
                     ],
                   ),
+                ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: Text('Delivery Address', style: theme.titleMedium)),
+                  TextButton.icon(
+                    onPressed: _addAddress,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add New'),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 18),
-            LuxeButton(
-              label: 'Place Order — ${usd.format(total)}',
-              expanded: true,
-              onPressed: app.cart.isEmpty ? null : () => _submit(context),
-            ),
-          ],
+              const SizedBox(height: 6),
+              if (addresses.isEmpty)
+                Text('Add a delivery address to continue.', style: theme.bodySmall)
+              else
+                for (final a in addresses)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _SelectTile(
+                      selected: a.id == selectedId,
+                      onTap: () => setState(() => _addressId = a.id),
+                      leading: const Icon(Icons.location_on_outlined, color: AppColors.gold),
+                      title: a.fullName,
+                      subtitle: '${a.singleLine}\n${a.phone}',
+                    ),
+                  ),
+              const SizedBox(height: 16),
+              Text('Payment Method', style: theme.titleMedium),
+              const SizedBox(height: 12),
+              _SelectTile(
+                selected: true,
+                onTap: null,
+                leading: const Icon(Icons.science_outlined, color: AppColors.gold),
+                title: method.label,
+                subtitle: method.description,
+                badge: method.isDemo ? 'TEST MODE' : null,
+              ),
+              const SizedBox(height: 22),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.bgSecondary,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Order Summary', style: theme.titleMedium),
+                    const SizedBox(height: 12),
+                    _SummaryRow('Subtotal', formatCents(subtotal)),
+                    _SummaryRow('Shipping', formatCents(ship)),
+                    _SummaryRow('Tax (8%)', formatCents(tax)),
+                    const Divider(height: 22, color: AppColors.divider),
+                    Row(
+                      children: [
+                        Text('Total', style: theme.titleMedium),
+                        const Spacer(),
+                        Text(formatCents(total), style: theme.titleMedium?.copyWith(color: AppColors.gold)),
+                      ],
+                    ),
+                    if (method.isDemo) ...[
+                      const SizedBox(height: 8),
+                      Text('Demo order — you will not be charged.', style: theme.bodySmall),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              LuxeButton(
+                label: _placing
+                    ? 'Placing order…'
+                    : '${method.isDemo ? 'Place Demo Order' : 'Place Order'} — ${formatCents(total)}',
+                expanded: true,
+                onPressed: (app.cart.isEmpty || selectedId == null || _placing) ? null : () => _place(selectedId),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _PaymentTile extends StatelessWidget {
-  const _PaymentTile({
-    required this.title,
-    required this.value,
-    required this.groupValue,
-    required this.onChanged,
+class _SelectTile extends StatelessWidget {
+  const _SelectTile({
+    required this.selected,
+    required this.onTap,
     required this.leading,
+    required this.title,
+    required this.subtitle,
+    this.badge,
   });
 
-  final String title;
-  final String value;
-  final String groupValue;
-  final void Function(String?) onChanged;
+  final bool selected;
+  final VoidCallback? onTap;
   final Widget leading;
+  final String title;
+  final String subtitle;
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
-    final selected = groupValue == value;
+    final theme = Theme.of(context).textTheme;
     return InkWell(
-      onTap: () => onChanged(value),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -276,15 +216,41 @@ class _PaymentTile extends StatelessWidget {
           border: Border.all(color: selected ? AppColors.gold : AppColors.divider, width: selected ? 1.5 : 1),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Radio<String>(
-              value: value,
-              groupValue: groupValue,
-              onChanged: onChanged,
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected ? AppColors.gold : AppColors.textSecondary,
             ),
+            const SizedBox(width: 10),
             leading,
             const SizedBox(width: 10),
-            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleSmall)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(title, style: theme.titleSmall),
+                      if (badge != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.gold.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(badge!,
+                              style: theme.labelSmall?.copyWith(color: AppColors.gold, fontWeight: FontWeight.w700)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: theme.bodySmall),
+                ],
+              ),
+            ),
           ],
         ),
       ),

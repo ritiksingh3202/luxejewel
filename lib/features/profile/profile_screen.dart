@@ -6,6 +6,7 @@ import '../../application/app_state.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/constants/app_assets.dart';
 import '../../core/theme/app_colors.dart';
+import '../../shared/feedback.dart';
 import '../../shared/widgets/luxe_image.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -16,9 +17,11 @@ class ProfileScreen extends StatelessWidget {
     final app = context.watch<AppState>();
     final auth = context.watch<AuthController>();
     final user = auth.session;
-    final name = user?.displayName ?? 'Guest';
+    final profile = app.profile;
+    final name = (profile?.fullName.isNotEmpty ?? false) ? profile!.fullName : (user?.displayName ?? 'Guest');
     final email = user?.email ?? 'Sign in to sync your account';
-    final phone = user?.phone ?? '';
+    final phone = profile?.phone ?? user?.phone ?? '';
+    final avatar = profile?.avatarUrl;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -41,7 +44,7 @@ class ProfileScreen extends StatelessWidget {
                     width: 78,
                     height: 78,
                     child: LuxeImage(
-                      source: AppAssets.avatarDefault,
+                      source: (avatar == null || avatar.isEmpty) ? AppAssets.avatarDefault : avatar,
                       fit: BoxFit.cover,
                       semanticLabel: 'Profile photo',
                     ),
@@ -59,6 +62,11 @@ class ProfileScreen extends StatelessWidget {
                         Text(phone, style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Edit profile',
+                  onPressed: () => context.push('/profile/edit'),
+                  icon: const Icon(Icons.edit_outlined, color: AppColors.gold),
                 ),
               ],
             ),
@@ -87,15 +95,22 @@ class ProfileScreen extends StatelessWidget {
                   showDivider: true,
                 ),
                 _Tile(
+                  icon: Icons.location_on_outlined,
+                  title: 'Shipping Addresses',
+                  trailing: '${app.addresses.length}',
+                  onTap: () => context.push('/addresses'),
+                  showDivider: true,
+                ),
+                _Tile(
                   icon: Icons.settings_outlined,
                   title: 'Settings',
-                  onTap: () {},
+                  onTap: () => context.push('/settings'),
                   showDivider: true,
                 ),
                 _Tile(
                   icon: Icons.help_outline_rounded,
                   title: 'Help & Support',
-                  onTap: () {},
+                  onTap: () => context.push('/help'),
                   showDivider: false,
                 ),
               ],
@@ -107,9 +122,9 @@ class ProfileScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
-              onTap: () {
-                auth.signOut();
-                context.go('/login');
+              onTap: () async {
+                final ok = await runWithFeedback(context, auth.signOut);
+                if (ok && context.mounted) context.go('/login');
               },
               child: Padding(
                 padding: const EdgeInsets.all(16),

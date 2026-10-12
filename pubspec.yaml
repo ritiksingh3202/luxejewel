@@ -33,13 +33,12 @@ flutter:
     - assets/images/ui/
 
   fonts:
-    - family: Inter
+    - family: Outfit
       fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
-        - asset: assets/fonts/Inter-SemiBold.ttf
+        - asset: assets/fonts/Outfit-Regular.ttf
+        - asset: assets/fonts/Outfit-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Outfit-SemiBold.ttf
           weight: 600
-    - family: Playfair Display
-      fonts:
-        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
-        - asset: assets/fonts/PlayfairDisplay-SemiBold.ttf
-          weight: 600
+        - asset: assets/fonts/Outfit-Bold.ttf
+          weight: 700

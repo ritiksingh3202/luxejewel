@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import 'app_colors.dart';
 
 class AppTheme {
-  static const _inter = 'Inter';
-  static const _playfair = 'Playfair Display';
+  static const _inter = 'Outfit';
+  static const _playfair = 'Outfit';
 
   static ThemeData dark() {
     final base = ThemeData(

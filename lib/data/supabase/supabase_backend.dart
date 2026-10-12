@@ -97,7 +97,13 @@ class SupabaseAuthRepository implements AuthRepository {
           data: {'full_name': name.trim(), if ((phone ?? '').trim().isNotEmpty) 'phone': phone!.trim()},
           emailRedirectTo: _webRedirect('/home'),
         );
-        return res.session == null;
+        if (res.session != null) return false;
+        try {
+          await _c.auth.signInWithPassword(email: email.trim(), password: password);
+          return false;
+        } on AuthException {
+          return true;
+        }
       });
 
   @override
